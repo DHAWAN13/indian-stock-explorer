@@ -32,7 +32,7 @@ def find_security_file(
 
         file_date = datetime.strptime(
             match.group(1),
-            "%Y%m%d",
+            "%d%m%Y",
         )
 
         dated_files.append((file_date, path))

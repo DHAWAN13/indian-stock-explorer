@@ -29,10 +29,15 @@ class BSEProvider(ExchangeProvider):
                 if row["Sts"].strip().upper() != "A":
                     continue
 
+                symbol = row["TckrSymb"].strip()
+
+                if symbol.endswith("#"):
+                    continue
+
                 securities.append(
                     Security(
                         company_name=row["FinInstrmNm"].strip(),
-                        symbol=row["TckrSymb"].strip(),
+                        symbol=symbol,
                         exchange="BSE",
                         isin=row["ISIN"].strip() or None,
                         security_code=row["FinInstrmId"].strip() or None,
