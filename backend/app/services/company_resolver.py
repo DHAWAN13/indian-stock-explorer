@@ -1,11 +1,25 @@
 import re
+from collections.abc import Iterable
 
 from app.domain.models import ResolutionResult, ResolutionStatus, Security
+from app.providers.exchange.base import ExchangeProvider
 
 
 class CompanyResolver:
     def __init__(self, securities: list[Security]):
         self.securities = securities
+
+    @classmethod
+    def from_providers(
+        cls,
+        providers: Iterable[ExchangeProvider],
+    ) -> "CompanyResolver":
+        securities: list[Security] = []
+
+        for provider in providers:
+            securities.extend(provider.get_securities())
+
+        return cls(securities)
 
     def resolve(self, query: str) -> ResolutionResult:
         normalized = self._normalize(query)
@@ -26,18 +40,27 @@ class CompanyResolver:
             }
         ]
 
-        if len(matches) == 1:
-            status = ResolutionStatus.RESOLVED
-        elif len(matches) > 1:
-            status = ResolutionStatus.AMBIGUOUS
-        else:
+        if not matches:
             status = ResolutionStatus.NOT_FOUND
+        elif self._is_single_company(matches):
+            status = ResolutionStatus.RESOLVED
+        else:
+            status = ResolutionStatus.AMBIGUOUS
 
         return ResolutionResult(
             query=query,
             status=status,
             matches=matches,
         )
+
+    @staticmethod
+    def _is_single_company(matches: list[Security]) -> bool:
+        identities = {
+            security.isin or CompanyResolver._normalize(security.company_name)
+            for security in matches
+        }
+
+        return len(identities) == 1
 
     @staticmethod
     def _normalize(value: str) -> str:
