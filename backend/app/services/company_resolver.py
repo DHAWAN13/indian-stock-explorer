@@ -31,7 +31,7 @@ class CompanyResolver:
                 matches=[],
             )
 
-        matches = [
+        direct_matches = [
             security
             for security in self.securities
             if normalized in {
@@ -40,12 +40,32 @@ class CompanyResolver:
             }
         ]
 
-        if not matches:
-            status = ResolutionStatus.NOT_FOUND
-        elif self._is_single_company(matches):
-            status = ResolutionStatus.RESOLVED
-        else:
-            status = ResolutionStatus.AMBIGUOUS
+        if not direct_matches:
+            return ResolutionResult(
+                query=query,
+                status=ResolutionStatus.NOT_FOUND,
+                matches=[],
+            )
+
+        # Expand matches across exchanges using ISIN.
+        matched_isins = {
+            security.isin
+            for security in direct_matches
+            if security.isin
+        }
+
+        matches = list(direct_matches)
+
+        if matched_isins:
+            for security in self.securities:
+                if security.isin in matched_isins and security not in matches:
+                    matches.append(security)
+
+        status = (
+            ResolutionStatus.RESOLVED
+            if self._is_single_company(matches)
+            else ResolutionStatus.AMBIGUOUS
+        )
 
         return ResolutionResult(
             query=query,
