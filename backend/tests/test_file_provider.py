@@ -6,8 +6,8 @@ from app.providers.exchange.file_provider import find_security_file
 
 
 def test_finds_latest_nse_file(tmp_path: Path):
-    older = tmp_path / "NSE_CM_security_20261001.csv.gz"
-    newer = tmp_path / "NSE_CM_security_20261002.csv.gz"
+    older = tmp_path / "NSE_CM_security_01102026.csv.gz"
+    newer = tmp_path / "NSE_CM_security_02102026.csv.gz"
 
     older.touch()
     newer.touch()
