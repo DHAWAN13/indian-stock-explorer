@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app.providers.exchange.bse import BSEProvider
+from app.providers.exchange.file_provider import find_security_file
 from app.providers.exchange.nse import NSEProvider
 from app.services.company_resolver import CompanyResolver
 
@@ -21,9 +22,18 @@ def get_company_resolver() -> CompanyResolver:
 
     data_path = Path(data_dir)
 
+    try:
+        nse_file = find_security_file(data_path, "NSE")
+        bse_file = find_security_file(data_path, "BSE")
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Exchange data is unavailable: {exc}",
+        ) from exc
+
     return CompanyResolver.from_providers(
         [
-            NSEProvider(data_path / "nse_securities.csv"),
-            BSEProvider(data_path / "bse_securities.csv"),
+            NSEProvider(nse_file),
+            BSEProvider(bse_file),
         ]
     )
