@@ -1,6 +1,6 @@
+import re
+from datetime import datetime
 from pathlib import Path
-
-from app.domain.models import Security
 
 
 def find_security_file(
@@ -8,18 +8,41 @@ def find_security_file(
     exchange: str,
 ) -> Path:
     patterns = {
-        "NSE": ["NSE_CM_security_*.csv.gz"],
-        "BSE": ["BSE_EQ_SCRIP_*.csv"],
+        "NSE": "NSE_CM_security_*.csv.gz",
+        "BSE": "BSE_EQ_SCRIP_*.csv",
     }
 
-    files = []
+    if exchange not in patterns:
+        raise ValueError(f"Unsupported exchange: {exchange}")
 
-    for pattern in patterns[exchange]:
-        files.extend(data_dir.glob(pattern))
+    files = list(data_dir.glob(patterns[exchange]))
 
     if not files:
         raise FileNotFoundError(
             f"No {exchange} security file found in {data_dir}"
         )
 
-    return max(files, key=lambda path: path.stat().st_mtime)
+    dated_files = []
+
+    for path in files:
+        match = re.search(r"(\d{8})", path.name)
+
+        if not match:
+            continue
+
+        file_date = datetime.strptime(
+            match.group(1),
+            "%Y%m%d",
+        )
+
+        dated_files.append((file_date, path))
+
+    if not dated_files:
+        raise ValueError(
+            f"No dated {exchange} security file found"
+        )
+
+    return max(
+        dated_files,
+        key=lambda item: item[0],
+    )[1]

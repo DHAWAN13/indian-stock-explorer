@@ -26,14 +26,20 @@ def create_nse_fixture(path: Path) -> None:
     writer.writeheader()
     writer.writerows(rows)
 
-    with gzip.open(path, "wt", encoding="utf-8", newline="") as file:
+    with gzip.open(
+        path,
+        "wt",
+        encoding="utf-8",
+        newline="",
+    ) as file:
         file.write(output.getvalue())
 
 
 def create_bse_fixture(path: Path) -> None:
     path.write_text(
-        "company_name,symbol,exchange,isin,security_code\n"
-        "TATA MOTORS PASS VEH LTD,TMPV,BSE,INE155A01022,500570\n",
+        "FinInstrmId,TckrSymb,FinInstrmNm,ISIN,SctyTpFlg,FinInstrmTp,Sts\n"
+        "500570,TMPV,TATA MOTORS PASSENGER VEHICLES,"
+        "INE155A01022,EQ,E,A\n",
         encoding="utf-8",
     )
 
