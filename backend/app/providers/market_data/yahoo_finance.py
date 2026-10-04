@@ -122,8 +122,8 @@ class YahooFinanceProvider(MarketDataProvider):
         if not isinstance(value, datetime):
             raise ValueError("Invalid historical data timestamp.")
 
-        # Naive timestamps are treated as exchange-local timestamps for
-        # session filtering. Timezone-aware timestamps are converted to IST.
+        # Naive timestamps are treated as exchange-local timestamps.
+        # Timezone-aware timestamps are converted to Indian Standard Time.
         if value.tzinfo is None or value.utcoffset() is None:
             return value.date()
 
@@ -156,7 +156,6 @@ class YahooFinanceProvider(MarketDataProvider):
         try:
             price = Decimal(str(closes.iloc[-1]))
             previous_close = Decimal(str(closes.iloc[-2]))
-
             timestamp = self._normalize_timestamp(closes.index[-1])
 
             return MarketQuote(
@@ -201,11 +200,12 @@ class YahooFinanceProvider(MarketDataProvider):
         if history is None or history.empty:
             return []
 
-        # The 1D chart uses the latest available trading session from a
-        # five-day intraday response, avoiding the unreliable 1d period.
+        # Use the latest available trading session for the 1D chart.
         if normalized_range == "1D":
             try:
-                latest_session = self._market_session_date(history.index[-1])
+                latest_session = self._market_session_date(
+                    history.index[-1]
+                )
                 session_mask = [
                     self._market_session_date(timestamp) == latest_session
                     for timestamp in history.index
@@ -228,13 +228,17 @@ class YahooFinanceProvider(MarketDataProvider):
 
         if missing:
             raise MarketDataProviderError(
-                f"Yahoo Finance response is missing columns: {', '.join(missing)}."
+                "Yahoo Finance response is missing columns: "
+                f"{', '.join(missing)}."
             )
 
         bars = []
 
         for timestamp, row in history.iterrows():
-            if any(pd.isna(row[column]) for column in required_columns):
+            if any(
+                pd.isna(row[column])
+                for column in required_columns
+            ):
                 continue
 
             try:
@@ -242,6 +246,29 @@ class YahooFinanceProvider(MarketDataProvider):
                 high_price = Decimal(str(row["High"]))
                 low_price = Decimal(str(row["Low"]))
                 close_price = Decimal(str(row["Close"]))
+
+                prices = (
+                    open_price,
+                    high_price,
+                    low_price,
+                    close_price,
+                )
+
+                # Reject non-finite or non-positive prices.
+                if not all(
+                    price.is_finite() and price > 0
+                    for price in prices
+                ):
+                    continue
+
+                # Reject inconsistent OHLC candles individually. Do not
+                # discard the entire historical response for one bad bar.
+                if (
+                    low_price > min(open_price, close_price)
+                    or high_price < max(open_price, close_price)
+                    or low_price > high_price
+                ):
+                    continue
 
                 raw_volume = row.get("Volume")
                 volume = (
@@ -260,6 +287,7 @@ class YahooFinanceProvider(MarketDataProvider):
                         volume=volume,
                     )
                 )
+
             except (
                 InvalidOperation,
                 ValueError,
