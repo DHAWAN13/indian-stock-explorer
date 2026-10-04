@@ -53,3 +53,20 @@ class CompanyResearchResponse(BaseModel):
     listing_status: ListingStatus
     company_name: str | None = None
     listings: list[CompanyResearchListingResponse]
+
+
+class HistoricalPriceBarResponse(BaseModel):
+    timestamp: datetime
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: int | None = None
+
+
+class HistoricalPriceResponse(BaseModel):
+    symbol: str
+    exchange: str
+    range: Literal["1D", "5D", "1M", "6M", "YTD", "1Y", "5Y", "MAX"]
+    source: str
+    bars: list[HistoricalPriceBarResponse]
