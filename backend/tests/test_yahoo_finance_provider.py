@@ -156,3 +156,97 @@ def test_invalid_configuration_is_rejected():
 
     with pytest.raises(ValueError):
         YahooFinanceProvider(max_attempts=0)
+
+def make_ohlcv_history():
+    index = pd.DatetimeIndex(
+        [
+            datetime(2026, 10, 2, 10, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc),
+        ]
+    )
+
+    return pd.DataFrame(
+        {
+            "Open": [735.0, 742.0],
+            "High": [745.0, 755.0],
+            "Low": [730.0, 738.0],
+            "Close": [740.0, 750.0],
+            "Volume": [100000, 120000],
+        },
+        index=index,
+    )
+
+
+def test_history_returns_real_ohlcv_bars_from_provider():
+    ticker = Mock()
+    ticker.history.return_value = make_ohlcv_history()
+
+    provider = YahooFinanceProvider(
+        ticker_factory=Mock(return_value=ticker),
+    )
+
+    bars = provider.get_history("TMPV", "NSE", "1M")
+
+    assert len(bars) == 2
+    assert bars[0].close == Decimal("740.0")
+    assert bars[1].close == Decimal("750.0")
+    assert bars[1].high == Decimal("755.0")
+    assert bars[1].low == Decimal("738.0")
+    assert bars[1].volume == 120000
+
+    ticker.history.assert_called_once_with(
+        period="1mo",
+        interval="1d",
+        auto_adjust=False,
+        raise_errors=True,
+        timeout=10.0,
+    )
+
+
+def test_history_uses_intraday_interval_for_one_day():
+    ticker = Mock()
+    ticker.history.return_value = make_ohlcv_history()
+
+    provider = YahooFinanceProvider(
+        ticker_factory=Mock(return_value=ticker),
+    )
+
+    provider.get_history("RELIANCE", "NSE", "1D")
+
+    ticker.history.assert_called_once_with(
+        period="5d",
+        interval="5m",
+        auto_adjust=False,
+        raise_errors=True,
+        timeout=10.0,
+    )
+
+
+def test_history_returns_empty_list_when_no_data():
+    ticker = Mock()
+    ticker.history.return_value = pd.DataFrame()
+
+    provider = YahooFinanceProvider(
+        ticker_factory=Mock(return_value=ticker),
+    )
+
+    assert provider.get_history("UNKNOWN", "NSE", "1M") == []
+
+
+def test_history_rejects_unsupported_range():
+    provider = YahooFinanceProvider(ticker_factory=Mock())
+
+    with pytest.raises(MarketDataProviderError, match="Unsupported history range"):
+        provider.get_history("TMPV", "NSE", "10Y")
+
+
+def test_history_rejects_missing_ohlc_columns():
+    ticker = Mock()
+    ticker.history.return_value = pd.DataFrame({"Close": [740.0, 750.0]})
+
+    provider = YahooFinanceProvider(
+        ticker_factory=Mock(return_value=ticker),
+    )
+
+    with pytest.raises(MarketDataProviderError, match="missing columns"):
+        provider.get_history("TMPV", "NSE", "1M")

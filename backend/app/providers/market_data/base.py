@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from app.domain.market_data import MarketQuote
+from app.domain.market_data import MarketQuote, HistoricalPriceBar
 
 
 class MarketDataProviderError(Exception):
@@ -8,7 +8,7 @@ class MarketDataProviderError(Exception):
 
 
 class MarketDataProvider(ABC):
-    """Interface for retrieving market quotes."""
+    """Interface for retrieving market quotes and historical prices."""
 
     @abstractmethod
     def get_quote(
@@ -16,8 +16,16 @@ class MarketDataProvider(ABC):
         symbol: str,
         exchange: str,
     ) -> MarketQuote | None:
-        """Return a quote, or None when no quote is available.
-
-        Raise MarketDataProviderError when the provider fails.
-        """
+        """Return a quote, or None when unavailable."""
         raise NotImplementedError
+
+    def get_history(
+        self,
+        symbol: str,
+        exchange: str,
+        time_range: str,
+    ) -> list[HistoricalPriceBar]:
+        """Return historical OHLCV bars when supported by the provider."""
+        raise MarketDataProviderError(
+            "Historical price data is not supported by this provider."
+        )

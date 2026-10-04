@@ -4,6 +4,8 @@ from decimal import Decimal
 
 from app.services.quote_freshness import get_quote_freshness
 
+from typing import Literal
+
 from app.api.dependencies import (
     get_company_resolver,
     get_market_data_provider,
@@ -15,6 +17,8 @@ from app.api.schemas import (
     CompanySearchResponse,
     MarketQuoteResponse,
     SecurityResponse,
+    HistoricalPriceBarResponse,
+    HistoricalPriceResponse,
 )
 from app.domain.models import ResolutionStatus
 from app.providers.market_data.base import (
@@ -170,4 +174,40 @@ def research_company(
         listing_status=listing_status,
         company_name=company_name,
         listings=research_listings,
+    )
+
+
+@router.get("/history", response_model=HistoricalPriceResponse)
+def get_company_history(
+    symbol: str = Query(..., min_length=1, max_length=30),
+    exchange: Literal["NSE", "BSE"] = Query(...),
+    time_range: Literal[
+        "1D", "5D", "1M", "6M", "YTD", "1Y", "5Y", "MAX"
+    ] = Query(..., alias="range"),
+    provider: MarketDataProvider = Depends(get_market_data_provider),
+) -> HistoricalPriceResponse:
+    try:
+        bars = provider.get_history(symbol, exchange, time_range)
+    except MarketDataProviderError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Historical market data is temporarily unavailable.",
+        ) from exc
+
+    return HistoricalPriceResponse(
+        symbol=symbol.strip().upper().removesuffix(".NS").removesuffix(".BO"),
+        exchange=exchange,
+        range=time_range,
+        source="Yahoo Finance via yfinance",
+        bars=[
+            HistoricalPriceBarResponse(
+                timestamp=bar.timestamp,
+                open=bar.open,
+                high=bar.high,
+                low=bar.low,
+                close=bar.close,
+                volume=bar.volume,
+            )
+            for bar in bars
+        ],
     )

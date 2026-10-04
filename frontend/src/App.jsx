@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import './App.css'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
@@ -10,12 +10,15 @@ const QUICK_SEARCHES = [
   { symbol: 'HDFCBANK', name: 'HDFC Bank' },
 ]
 
-async function apiGet(path) {
+const HISTORY_RANGES = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'MAX']
+
+async function apiGet(path, options = {}) {
   let response
 
   try {
-    response = await fetch(`${API_BASE_URL}${path}`)
-  } catch {
+    response = await fetch(`${API_BASE_URL}${path}`, options)
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error
     throw new Error('Cannot reach FastAPI. Check that the backend is running.')
   }
 
@@ -49,6 +52,7 @@ function money(value, currency = 'INR') {
 
 function number(value, digits = 2) {
   if (value == null || !Number.isFinite(Number(value))) return '—'
+
   return Number(value).toLocaleString('en-IN', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -68,6 +72,26 @@ function dateLabel(value) {
   })
 }
 
+function chartTimeLabel(value, range) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+
+  if (range === '1D' || range === '5D') {
+    return date.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    })
+  }
+
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    ...(range === '5Y' || range === 'MAX' ? { year: '2-digit' } : {}),
+    timeZone: 'Asia/Kolkata',
+  })
+}
+
 function StateBadge({ value }) {
   const status = String(value || 'UNKNOWN').toUpperCase()
   const kind =
@@ -77,7 +101,11 @@ function StateBadge({ value }) {
         ? 'warning'
         : 'neutral'
 
-  return <span className={`state-badge ${kind}`}>{status.replaceAll('_', ' ')}</span>
+  return (
+    <span className={`state-badge ${kind}`}>
+      {status.replaceAll('_', ' ')}
+    </span>
+  )
 }
 
 function QuoteStatus({ quote }) {
@@ -108,9 +136,7 @@ function QuoteCard({ listing, quote }) {
 
       <p className="listing-name">{listing.company_name}</p>
 
-      {listing.isin && (
-        <p className="isin">ISIN · {listing.isin}</p>
-      )}
+      {listing.isin && <p className="isin">ISIN · {listing.isin}</p>}
 
       {quote ? (
         <>
@@ -145,7 +171,7 @@ function QuoteCard({ listing, quote }) {
           </div>
 
           <div className="quote-source">
-            Source: {quote.source || 'Not supplied'}
+            Source: {quote.source || 'Not provided'}
           </div>
         </>
       ) : (
@@ -161,137 +187,301 @@ function QuoteCard({ listing, quote }) {
   )
 }
 
-function CloseComparison({ quote }) {
-  if (!quote) {
-    return (
-      <section className="panel chart-panel">
-        <div className="panel-heading">
-          <div>
-            <div className="micro-label">PRICE CONTEXT</div>
-            <h3>Close comparison</h3>
-          </div>
-        </div>
-        <div className="empty-chart">
-          Select a company with an available quote to view the close comparison.
-        </div>
-      </section>
-    )
+function HistoricalPriceChart({
+  symbol,
+  exchange,
+  quote,
+  range,
+  onRangeChange,
+  data,
+  loading,
+  error,
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState(null)
+
+  const bars = Array.isArray(data?.bars) ? data.bars : []
+  const validBars = bars
+    .map((bar, index) => ({ bar, index, value: Number(bar.close) }))
+    .filter((point) => Number.isFinite(point.value) && point.value > 0)
+
+  const width = 800
+  const left = 76
+  const right = 782
+  const top = 23
+  const bottom = 226
+
+  let points = []
+  let ticks = []
+  let linePath = ''
+  let areaPath = ''
+
+  if (validBars.length) {
+    const rawMin = Math.min(...validBars.map((point) => point.value))
+    const rawMax = Math.max(...validBars.map((point) => point.value))
+    const spread = Math.max(rawMax - rawMin, Math.abs(rawMax) * 0.01, 0.01)
+    const minValue = rawMin - spread * 0.12
+    const maxValue = rawMax + spread * 0.12
+
+    points = validBars.map((point, index) => ({
+      ...point,
+      x:
+        left +
+        (validBars.length === 1
+          ? 0
+          : (index / (validBars.length - 1)) * (right - left)),
+      y:
+        bottom -
+        ((point.value - minValue) / (maxValue - minValue)) * (bottom - top),
+    }))
+
+    ticks = Array.from({ length: 4 }, (_, index) => {
+      const value = minValue + ((maxValue - minValue) * index) / 3
+      return {
+        value,
+        y: bottom - ((value - minValue) / (maxValue - minValue)) * (bottom - top),
+      }
+    })
+
+    linePath = points
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+      .join(' ')
+
+    areaPath =
+      `${linePath} L ${points[points.length - 1].x} ${bottom}` +
+      ` L ${points[0].x} ${bottom} Z`
   }
 
-  const previous = Number(quote.previous_close)
-  const current = Number(quote.price)
+  const activeIndex =
+    hoveredIndex == null
+      ? points.length - 1
+      : Math.min(hoveredIndex, points.length - 1)
 
-  if (
-    !Number.isFinite(previous) ||
-    !Number.isFinite(current) ||
-    previous <= 0 ||
-    current <= 0
-  ) {
-    return null
+  const activePoint = points[activeIndex]
+  const firstPoint = points[0]
+  const lastPoint = points[points.length - 1]
+
+  const rangeChange =
+    firstPoint && lastPoint && firstPoint.value !== 0
+      ? ((lastPoint.value - firstPoint.value) / firstPoint.value) * 100
+      : null
+
+  function selectNearestPoint(event) {
+    if (!points.length) return
+
+    const rect = event.currentTarget.getBoundingClientRect()
+    const chartX = ((event.clientX - rect.left) / rect.width) * width
+
+    let nearestIndex = 0
+    let distance = Infinity
+
+    points.forEach((point, index) => {
+      const candidateDistance = Math.abs(point.x - chartX)
+
+      if (candidateDistance < distance) {
+        distance = candidateDistance
+        nearestIndex = index
+      }
+    })
+
+    setHoveredIndex(nearestIndex)
   }
 
-  const low = Math.min(previous, current)
-  const high = Math.max(previous, current)
-  const spread = Math.max(high - low, high * 0.005, 0.01)
-  const y = (value) => 111 - ((value - low) / spread) * 62
-  const firstY = y(previous)
-  const lastY = y(current)
-  const trend = current >= previous
+  const axisIndices = [
+    ...new Set(
+      points.length > 1
+        ? [0, Math.floor((points.length - 1) / 2), points.length - 1]
+        : points.length
+          ? [0]
+          : [],
+    ),
+  ]
 
   return (
     <section className="panel chart-panel">
       <div className="panel-heading">
         <div>
-          <div className="micro-label">PRICE CONTEXT</div>
-          <h3>Close comparison</h3>
-          <p>Previous close compared with latest available close</p>
+          <div className="micro-label">HISTORICAL MARKET DATA</div>
+          <h3>Price history</h3>
+          <p>
+            {symbol && exchange ? `${symbol} · ${exchange}` : 'Company history'}
+            {data && ` · ${validBars.length} observations`}
+          </p>
         </div>
-        <span className={`trend-pill ${trend ? 'up' : 'down'}`}>
-          {trend ? '↗' : '↘'} {number(quote.change_percent)}%
-        </span>
+
+        {quote && <QuoteStatus quote={quote} />}
       </div>
 
-      <div className="comparison-chart">
-        <svg
-          viewBox="0 0 700 155"
-          role="img"
-          aria-label={`Previous close ${money(previous, quote.currency)}, latest close ${money(current, quote.currency)}`}
-          preserveAspectRatio="none"
-        >
-          <defs>
-            <linearGradient id="price-area" x1="0" y1="0" x2="0" y2="1">
-              <stop
-                offset="0%"
-                stopColor={trend ? '#27c78a' : '#ff6376'}
-                stopOpacity="0.24"
-              />
-              <stop
-                offset="100%"
-                stopColor={trend ? '#27c78a' : '#ff6376'}
-                stopOpacity="0"
-              />
-            </linearGradient>
-          </defs>
-
-          {[35, 75, 115].map((line) => (
-            <line
-              key={line}
-              x1="25"
-              x2="675"
-              y1={line}
-              y2={line}
-              stroke="currentColor"
-              strokeOpacity="0.11"
-              strokeDasharray="4 5"
-            />
-          ))}
-
-          <path
-            d={`M 35 ${firstY} L 665 ${lastY} L 665 136 L 35 136 Z`}
-            fill="url(#price-area)"
-          />
-
-          <path
-            d={`M 35 ${firstY} L 665 ${lastY}`}
-            fill="none"
-            stroke={trend ? '#27c78a' : '#ff6376'}
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            vectorEffect="non-scaling-stroke"
-          />
-
-          <circle
-            cx="35"
-            cy={firstY}
-            r="4"
-            fill="#9ca3af"
-            vectorEffect="non-scaling-stroke"
-          />
-          <circle
-            cx="665"
-            cy={lastY}
-            r="5"
-            fill={trend ? '#27c78a' : '#ff6376'}
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
-
-        <div className="chart-axis">
-          <div>
-            <span>Previous close</span>
-            <strong>{money(previous, quote.currency)}</strong>
-          </div>
-          <div className="axis-end">
-            <span>Latest available close</span>
-            <strong>{money(current, quote.currency)}</strong>
-          </div>
-        </div>
+      <div className="history-range-bar" aria-label="Historical time range">
+        {HISTORY_RANGES.map((item) => (
+          <button
+            key={item}
+            type="button"
+            className={range === item ? 'selected' : ''}
+            aria-pressed={range === item}
+            disabled={loading || !symbol || !exchange}
+            onClick={() => {
+              setHoveredIndex(null)
+              onRangeChange(item)
+            }}
+          >
+            {item}
+          </button>
+        ))}
       </div>
 
-      <p className="chart-disclaimer">
-        Two observed closing values only. This is not an intraday or historical
-        price chart.
-      </p>
+      {loading ? (
+        <div className="history-state" role="status" aria-live="polite">
+          <span className="spinner" />
+          Loading {range} historical prices…
+        </div>
+      ) : error ? (
+        <div className="history-state history-error" role="alert">
+          <strong>Historical prices unavailable</strong>
+          <p>{error}</p>
+          <button type="button" onClick={() => onRangeChange(range)}>
+            Retry this range
+          </button>
+        </div>
+      ) : !validBars.length ? (
+        <div className="history-state">
+          No historical observations were returned for {range}. Try another
+          range or check back later.
+        </div>
+      ) : (
+        <>
+          <div className="history-current-value">
+            <strong>{money(activePoint.value, quote?.currency || 'INR')}</strong>
+            <span>{dateLabel(activePoint.bar.timestamp)}</span>
+            {rangeChange != null && (
+              <span className={rangeChange >= 0 ? 'up' : 'down'}>
+                {rangeChange > 0 ? '+' : ''}
+                {rangeChange.toFixed(2)}% over selected range
+              </span>
+            )}
+          </div>
+
+          <div className="historical-chart">
+            <svg
+              viewBox="0 0 800 278"
+              role="img"
+              aria-label={`${symbol} historical closing prices for ${range}`}
+              onPointerMove={selectNearestPoint}
+              onPointerLeave={() => setHoveredIndex(null)}
+            >
+              <defs>
+                <linearGradient id="history-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#28c58a" stopOpacity="0.23" />
+                  <stop offset="100%" stopColor="#28c58a" stopOpacity="0.01" />
+                </linearGradient>
+              </defs>
+
+              {ticks.map((tick, index) => (
+                <g key={index}>
+                  <line
+                    x1={left}
+                    x2={right}
+                    y1={tick.y}
+                    y2={tick.y}
+                    className="chart-gridline"
+                  />
+                  <text
+                    x={left - 12}
+                    y={tick.y + 4}
+                    textAnchor="end"
+                    className="chart-y-label"
+                  >
+                    {number(tick.value)}
+                  </text>
+                </g>
+              ))}
+
+              <path d={areaPath} fill="url(#history-fill)" />
+
+              <path
+                d={linePath}
+                fill="none"
+                stroke="#28c58a"
+                strokeWidth="2.3"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+              />
+
+              {activePoint && (
+                <>
+                  <line
+                    x1={activePoint.x}
+                    x2={activePoint.x}
+                    y1={top}
+                    y2={bottom}
+                    className="chart-crosshair"
+                  />
+                  <circle
+                    cx={activePoint.x}
+                    cy={activePoint.y}
+                    r="5"
+                    fill="#28c58a"
+                    stroke="#0e151b"
+                    strokeWidth="2"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </>
+              )}
+
+              {axisIndices.map((index) => (
+                <text
+                  key={index}
+                  x={points[index].x}
+                  y="257"
+                  textAnchor={
+                    index === 0
+                      ? 'start'
+                      : index === points.length - 1
+                        ? 'end'
+                        : 'middle'
+                  }
+                  className="chart-x-label"
+                >
+                  {chartTimeLabel(points[index].bar.timestamp, range)}
+                </text>
+              ))}
+            </svg>
+          </div>
+
+          <div className="historical-ohlc">
+            <div>
+              <span>Open</span>
+              <strong>{money(activePoint.bar.open, quote?.currency || 'INR')}</strong>
+            </div>
+            <div>
+              <span>High</span>
+              <strong>{money(activePoint.bar.high, quote?.currency || 'INR')}</strong>
+            </div>
+            <div>
+              <span>Low</span>
+              <strong>{money(activePoint.bar.low, quote?.currency || 'INR')}</strong>
+            </div>
+            <div>
+              <span>Close</span>
+              <strong>{money(activePoint.bar.close, quote?.currency || 'INR')}</strong>
+            </div>
+            <div>
+              <span>Volume</span>
+              <strong>
+                {activePoint.bar.volume == null
+                  ? '—'
+                  : Number(activePoint.bar.volume).toLocaleString('en-IN')}
+              </strong>
+            </div>
+          </div>
+
+          <p className="chart-disclaimer">
+            Source: {data?.source || 'Configured market-data provider'}. Chart
+            points use the actual observations returned by the provider.
+            Intraday history may be delayed or unavailable.
+          </p>
+        </>
+      )}
     </section>
   )
 }
@@ -307,6 +497,56 @@ function App() {
   const [quoteError, setQuoteError] = useState('')
   const [lastSearches, setLastSearches] = useState([])
 
+  const [historyRange, setHistoryRange] = useState('1M')
+  const [historyData, setHistoryData] = useState(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState('')
+  const historyRequestRef = useRef(null)
+
+  async function loadHistory(symbol, exchange, range) {
+    historyRequestRef.current?.abort()
+
+    if (!symbol || !exchange) {
+      historyRequestRef.current = null
+      setHistoryData(null)
+      setHistoryError('')
+      setHistoryLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    historyRequestRef.current = controller
+    setHistoryLoading(true)
+    setHistoryData(null)
+    setHistoryError('')
+
+    const params = new URLSearchParams({ symbol, exchange, range })
+
+    try {
+      const result = await apiGet(
+        `/api/v1/companies/history?${params.toString()}`,
+        { signal: controller.signal },
+      )
+
+      if (historyRequestRef.current === controller) {
+        setHistoryData(result)
+      }
+    } catch (requestError) {
+      if (
+        historyRequestRef.current === controller &&
+        requestError.name !== 'AbortError'
+      ) {
+        setHistoryData(null)
+        setHistoryError(requestError.message)
+      }
+    } finally {
+      if (historyRequestRef.current === controller) {
+        historyRequestRef.current = null
+        setHistoryLoading(false)
+      }
+    }
+  }
+
   async function runSearch(rawQuery) {
     const term = rawQuery.trim()
 
@@ -317,12 +557,17 @@ function App() {
 
     setQuery(term)
     setSearchedQuery(term)
+    historyRequestRef.current?.abort()
+    historyRequestRef.current = null
+    setHistoryLoading(false)
     setLoading(true)
     setError('')
     setQuoteError('')
     setSearchResult(null)
     setOverview(null)
     setResearch(null)
+    setHistoryData(null)
+    setHistoryError('')
 
     setLastSearches((items) =>
       [term, ...items.filter((item) => item.toLowerCase() !== term.toLowerCase())].slice(
@@ -343,10 +588,28 @@ function App() {
       setOverview(overviewData)
 
       if (String(searchData.resolution_status).toUpperCase() === 'RESOLVED') {
+        let researchData = null
+
         try {
-          setResearch(await apiGet(`/api/v1/companies/research?q=${q}`))
+          researchData = await apiGet(`/api/v1/companies/research?q=${q}`)
+          setResearch(researchData)
         } catch (researchFailure) {
           setQuoteError(researchFailure.message)
+        }
+
+        const researchListings =
+          researchData?.listings ||
+          (overviewData.listings || []).map((listing) => ({ listing, quote: null }))
+        const historyItem =
+          researchListings.find(
+            (item) => (item.listing || item).exchange === 'NSE' && item.quote,
+          ) ||
+          researchListings.find((item) => item.quote) ||
+          researchListings[0]
+        const listing = historyItem?.listing || historyItem
+
+        if (listing?.symbol && listing?.exchange) {
+          void loadHistory(listing.symbol, listing.exchange, historyRange)
         }
       }
     } catch (requestFailure) {
@@ -367,31 +630,48 @@ function App() {
 
   const listings =
     research?.listings ||
-    (overview?.listings || []).map((listing) => ({ listing, quote: null }))
+    (overview?.listings || []).map((listing) => ({
+      listing,
+      quote: null,
+    }))
 
-  const primaryQuote =
-    listings.find((item) => item.quote?.exchange === 'NSE' && item.quote)?.quote ||
-    listings.find((item) => item.quote)?.quote ||
+  const primaryItem =
+    listings.find(
+      (item) => (item.listing || item).exchange === 'NSE' && item.quote,
+    ) ||
+    listings.find((item) => item.quote) ||
+    listings[0] ||
     null
 
+  const primaryListing = primaryItem
+    ? primaryItem.listing || primaryItem
+    : null
+
+  const primaryQuote = primaryItem?.quote || null
+  const historySymbol = primaryListing?.symbol || ''
+  const historyExchange = primaryListing?.exchange || ''
   const companyName =
     research?.company_name || overview?.company_name || searchedQuery
+
+  function resetWorkspace() {
+    historyRequestRef.current?.abort()
+    historyRequestRef.current = null
+    setHistoryLoading(false)
+    setSearchResult(null)
+    setOverview(null)
+    setResearch(null)
+    setHistoryData(null)
+    setHistoryError('')
+    setError('')
+    setQuoteError('')
+    setQuery('')
+    setSearchedQuery('')
+  }
 
   return (
     <div className="finance-app">
       <aside className="left-sidebar">
-        <button
-          type="button"
-          className="brand"
-          onClick={() => {
-            setSearchResult(null)
-            setOverview(null)
-            setResearch(null)
-            setError('')
-            setQuery('')
-            setSearchedQuery('')
-          }}
-        >
+        <button type="button" className="brand" onClick={resetWorkspace}>
           <span className="brand-symbol" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none">
               <path
@@ -403,7 +683,9 @@ function App() {
               />
             </svg>
           </span>
-          <span>Indian Stock <strong>Explorer</strong></span>
+          <span>
+            Indian Stock <strong>Explorer</strong>
+          </span>
         </button>
 
         <div className="side-section">
@@ -411,21 +693,23 @@ function App() {
           <button
             className={!searchedQuery ? 'side-link active' : 'side-link'}
             type="button"
-            onClick={() => {
-              setSearchResult(null)
-              setOverview(null)
-              setResearch(null)
-              setError('')
-              setQuery('')
-              setSearchedQuery('')
-            }}
+            onClick={resetWorkspace}
           >
             <span>◫</span> Discover
           </button>
-          <button className="side-link" type="button" onClick={() => document.getElementById('company-search')?.focus()}>
+          <button
+            className="side-link"
+            type="button"
+            onClick={() => document.getElementById('company-search')?.focus()}
+          >
             <span>⌕</span> Company search
           </button>
-          <a className="side-link" href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">
+          <a
+            className="side-link"
+            href="http://127.0.0.1:8000/docs"
+            target="_blank"
+            rel="noreferrer"
+          >
             <span>↗</span> API documentation
           </a>
         </div>
@@ -435,6 +719,7 @@ function App() {
             <span className="side-label">QUICK LOOKUP</span>
             <span className="side-count">{QUICK_SEARCHES.length}</span>
           </div>
+
           {QUICK_SEARCHES.map((item) => (
             <button
               type="button"
@@ -541,7 +826,9 @@ function App() {
             <div className="notice-panel error-panel" role="alert">
               <strong>Search could not be completed</strong>
               <p>{error}</p>
-              <button type="button" onClick={() => runSearch(query)}>Retry →</button>
+              <button type="button" onClick={() => runSearch(query)}>
+                Retry →
+              </button>
             </div>
           )}
 
@@ -551,7 +838,7 @@ function App() {
                 <div>
                   <div className="eyebrow">IDENTITY RESOLUTION</div>
                   <h2>Select the intended company</h2>
-                  <p>More than one company matches “{searchedQuery}”.</p>
+                  <p>More than one company matches ”œ{searchedQuery}”.</p>
                 </div>
                 <StateBadge value="AMBIGUOUS" />
               </div>
@@ -564,7 +851,9 @@ function App() {
                     key={`${item.symbol}-${item.exchange}-${index}`}
                     onClick={() => runSearch(item.symbol)}
                   >
-                    <span className="candidate-symbol">{item.symbol?.slice(0, 1)}</span>
+                    <span className="candidate-symbol">
+                      {item.symbol?.slice(0, 1)}
+                    </span>
                     <span className="candidate-name">
                       <strong>{item.company_name}</strong>
                       <small>{item.symbol} · {item.exchange}</small>
@@ -581,80 +870,109 @@ function App() {
               <StateBadge value={overview?.listing_status || 'UNVERIFIED'} />
               <h2>No matching listed company found</h2>
               <p>
-                The configured listing data couldn't resolve “{searchedQuery}”.
+                The configured listing data couldn&apos;t resolve ”œ{searchedQuery}”.
                 This does not independently prove that a company is unlisted.
               </p>
             </section>
           )}
 
-          {!loading && !error && searchResult && !isAmbiguous && !isNotFound && overview && (
-            <section className="results-area">
-              <div className="section-title company-title">
-                <div>
-                  <div className="eyebrow">RESEARCH OVERVIEW</div>
-                  <h2>{companyName}</h2>
-                  <p className="result-query">Resolved from “{searchedQuery}”</p>
+          {!loading &&
+            !error &&
+            searchResult &&
+            !isAmbiguous &&
+            !isNotFound &&
+            overview && (
+              <section className="results-area">
+                <div className="section-title company-title">
+                  <div>
+                    <div className="eyebrow">RESEARCH OVERVIEW</div>
+                    <h2>{companyName}</h2>
+                    <p className="result-query">
+                      Resolved from ”œ{searchedQuery}”
+                    </p>
+                  </div>
+                  <StateBadge value={overview.listing_status} />
                 </div>
-                <StateBadge value={overview.listing_status} />
-              </div>
 
-              <div className="metric-strip">
-                <div className="metric-item">
-                  <span>IDENTITY</span>
-                  <strong>{overview.resolution_status?.replaceAll('_', ' ') || 'UNKNOWN'}</strong>
+                <div className="metric-strip">
+                  <div className="metric-item">
+                    <span>IDENTITY</span>
+                    <strong>
+                      {overview.resolution_status?.replaceAll('_', ' ') || 'UNKNOWN'}
+                    </strong>
+                  </div>
+                  <div className="metric-item">
+                    <span>EXCHANGE LISTINGS</span>
+                    <strong>{listings.length}</strong>
+                  </div>
+                  <div className="metric-item">
+                    <span>EXCHANGES</span>
+                    <strong>
+                      {[...new Set(listings.map((item) => (item.listing || item).exchange))]
+                        .join(' / ') || '—'}
+                    </strong>
+                  </div>
                 </div>
-                <div className="metric-item">
-                  <span>EXCHANGE LISTINGS</span>
-                  <strong>{listings.length}</strong>
+
+                {quoteError && (
+                  <div className="inline-warning" role="status">
+                    <strong>Listing resolved, but quote retrieval failed.</strong>
+                    <p>{quoteError}</p>
+                    <button
+                      type="button"
+                      onClick={() => runSearch(searchedQuery)}
+                    >
+                      Retry quote lookup →
+                    </button>
+                  </div>
+                )}
+
+                <HistoricalPriceChart
+                  symbol={historySymbol}
+                  exchange={historyExchange}
+                  quote={primaryQuote}
+                  range={historyRange}
+                  onRangeChange={(nextRange) => {
+                    setHistoryRange(nextRange)
+                    void loadHistory(historySymbol, historyExchange, nextRange)
+                  }}
+                  data={historyData}
+                  loading={historyLoading}
+                  error={historyError}
+                />
+
+                <div className="listing-section-heading">
+                  <div>
+                    <div className="eyebrow">LISTING DETAILS</div>
+                    <h3>Exchange quotes</h3>
+                  </div>
+                  <span>{listings.length} listings</span>
                 </div>
-                <div className="metric-item">
-                  <span>EXCHANGES</span>
-                  <strong>{[...new Set(listings.map((item) => (item.listing || item).exchange))].join(' / ') || '—'}</strong>
+
+                <div className="quotes-grid">
+                  {listings.map((item, index) => {
+                    const listing = item.listing || item
+                    return (
+                      <QuoteCard
+                        key={`${listing.symbol}-${listing.exchange}-${index}`}
+                        listing={listing}
+                        quote={item.quote}
+                      />
+                    )
+                  })}
                 </div>
-              </div>
 
-              {quoteError && (
-                <div className="inline-warning" role="status">
-                  <strong>Listing resolved, but quote retrieval failed.</strong>
-                  <p>{quoteError}</p>
-                  <button type="button" onClick={() => runSearch(searchedQuery)}>Retry quote lookup →</button>
+                <div className="disclaimer">
+                  <span>ⓘ</span>
+                  <p>
+                    Quotes may be delayed or stale and are not guaranteed to be
+                    live. The chart displays observations returned by Yahoo
+                    Finance; it is not an exchange-authoritative feed. For
+                    research purposes only, not investment advice.
+                  </p>
                 </div>
-              )}
-
-              <CloseComparison quote={primaryQuote} />
-
-              <div className="listing-section-heading">
-                <div>
-                  <div className="eyebrow">LISTING DETAILS</div>
-                  <h3>Exchange quotes</h3>
-                </div>
-                <span>{listings.length} listings</span>
-              </div>
-
-              <div className="quotes-grid">
-                {listings.map((item, index) => {
-                  const listing = item.listing || item
-                  return (
-                    <QuoteCard
-                      key={`${listing.symbol}-${listing.exchange}-${index}`}
-                      listing={listing}
-                      quote={item.quote}
-                    />
-                  )
-                })}
-              </div>
-
-              <div className="disclaimer">
-                <span>ⓘ</span>
-                <p>
-                  Quotes may be delayed or stale and are not guaranteed to be
-                  live. The close comparison uses only two observed values,
-                  not intraday price history. For research purposes only; not
-                  investment advice.
-                </p>
-              </div>
-            </section>
-          )}
+              </section>
+            )}
 
           {!loading && !error && !searchResult && (
             <section className="discover-panel">
@@ -684,7 +1002,9 @@ function App() {
                     </span>
                     <strong>{item.symbol}</strong>
                     <small>{item.name}</small>
-                    <span className="quick-cta">Search company <span>→</span></span>
+                    <span className="quick-cta">
+                      Search company <span>→</span>
+                    </span>
                   </button>
                 ))}
               </div>
@@ -692,7 +1012,7 @@ function App() {
               <div className="discover-note">
                 <span className="status-dot" />
                 No market figures are displayed until a company lookup returns
-                verified backend data.
+                backend data.
               </div>
             </section>
           )}
@@ -727,7 +1047,10 @@ function App() {
                 listings.map((item, index) => {
                   const listing = item.listing || item
                   return (
-                    <div className="rail-listing" key={`${listing.symbol}-${listing.exchange}-${index}`}>
+                    <div
+                      className="rail-listing"
+                      key={`${listing.symbol}-${listing.exchange}-${index}`}
+                    >
                       <span className="rail-exchange">{listing.exchange}</span>
                       <div>
                         <strong>{listing.symbol}</strong>
@@ -754,7 +1077,9 @@ function App() {
               {primaryQuote && (
                 <div className="rail-data-time">
                   <span>Last quote timestamp</span>
-                  <strong>{dateLabel(primaryQuote.as_of || primaryQuote.timestamp)}</strong>
+                  <strong>
+                    {dateLabel(primaryQuote.as_of || primaryQuote.timestamp)}
+                  </strong>
                 </div>
               )}
             </div>
