@@ -15,3 +15,10 @@ class CompanySearchResponse(BaseModel):
     query: str
     resolution_status: ResolutionStatus
     matches: list[SecurityResponse]
+
+
+class CompanyOverviewResponse(BaseModel):
+    query: str
+    resolution_status: ResolutionStatus
+    company_name: str | None = None
+    listings: list[SecurityResponse]
