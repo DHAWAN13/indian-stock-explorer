@@ -1,5 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from decimal import Decimal
+
+from app.services.quote_freshness import get_quote_freshness
+
 from app.api.dependencies import (
     get_company_resolver,
     get_market_data_provider,
@@ -37,12 +41,14 @@ def to_quote_response(quote) -> MarketQuoteResponse:
     return MarketQuoteResponse(
         symbol=quote.symbol,
         exchange=quote.exchange,
-        price=quote.price,
-        previous_close=quote.previous_close,
-        change=quote.change,
-        change_percent=quote.change_percent,
+        price=quote.price.quantize(Decimal("0.01")),
+        previous_close=quote.previous_close.quantize(Decimal("0.01")),
+        change=quote.change.quantize(Decimal("0.01")),
+        change_percent=quote.change_percent.quantize(Decimal("0.01")),
         currency=quote.currency,
         timestamp=quote.timestamp,
+        as_of=quote.timestamp,
+        freshness=get_quote_freshness(quote.timestamp),
         source=quote.source,
     )
 

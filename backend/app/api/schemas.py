@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-
+from typing import Literal
 from pydantic import BaseModel
 
 from app.domain.models import ListingStatus, ResolutionStatus
@@ -38,6 +38,8 @@ class MarketQuoteResponse(BaseModel):
     currency: str
     timestamp: datetime
     source: str
+    as_of: datetime
+    freshness: Literal["fresh", "stale"]
 
 
 class CompanyResearchListingResponse(BaseModel):
