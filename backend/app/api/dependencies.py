@@ -9,6 +9,8 @@ from app.providers.exchange.file_provider import find_security_file
 from app.providers.exchange.nse import NSEProvider
 from app.services.company_resolver import CompanyResolver
 
+from app.providers.market_data.file_provider import FileMarketDataProvider
+from app.providers.market_data.base import MarketDataProvider
 
 @lru_cache
 def get_company_resolver() -> CompanyResolver:
@@ -37,3 +39,8 @@ def get_company_resolver() -> CompanyResolver:
             BSEProvider(bse_file),
         ]
     )
+
+@lru_cache
+def get_market_data_provider() -> MarketDataProvider:
+    data_path = Path(__file__).resolve().parents[2] / "data" / "sample_quotes.json"
+    return FileMarketDataProvider(data_path)

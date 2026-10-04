@@ -1,5 +1,14 @@
 from fastapi import APIRouter, Depends, Query
 
+from fastapi import HTTPException
+
+from app.api.dependencies import get_market_data_provider
+from app.api.schemas import MarketQuoteResponse
+from app.providers.market_data.base import (
+    MarketDataProvider,
+    MarketDataProviderError,
+)
+
 from app.api.dependencies import get_company_resolver
 from app.api.schemas import (
     CompanyOverviewResponse,
@@ -65,4 +74,36 @@ def get_company_overview(
             to_security_response(security)
             for security in result.matches
         ],
+    )
+
+@router.get("/quote", response_model=MarketQuoteResponse)
+def get_company_quote(
+    symbol: str = Query(..., min_length=1, max_length=30),
+    exchange: str = Query(..., pattern="^(NSE|BSE)$"),
+    provider: MarketDataProvider = Depends(get_market_data_provider),
+) -> MarketQuoteResponse:
+    try:
+        quote = provider.get_quote(symbol, exchange)
+    except MarketDataProviderError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Market data is temporarily unavailable.",
+        ) from exc
+
+    if quote is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No quote found for this symbol and exchange.",
+        )
+
+    return MarketQuoteResponse(
+        symbol=quote.symbol,
+        exchange=quote.exchange,
+        price=quote.price,
+        previous_close=quote.previous_close,
+        change=quote.change,
+        change_percent=quote.change_percent,
+        currency=quote.currency,
+        timestamp=quote.timestamp,
+        source=quote.source,
     )

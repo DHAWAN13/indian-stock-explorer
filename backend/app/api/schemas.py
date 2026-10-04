@@ -1,7 +1,7 @@
 from pydantic import BaseModel
-
 from app.domain.models import ListingStatus, ResolutionStatus
-
+from datetime import datetime
+from decimal import Decimal
 
 class SecurityResponse(BaseModel):
     company_name: str
@@ -23,3 +23,14 @@ class CompanyOverviewResponse(BaseModel):
     listing_status: ListingStatus
     company_name: str | None = None
     listings: list[SecurityResponse]
+
+class MarketQuoteResponse(BaseModel):
+    symbol: str
+    exchange: str
+    price: Decimal
+    previous_close: Decimal
+    change: Decimal
+    change_percent: Decimal
+    currency: str
+    timestamp: datetime
+    source: str
