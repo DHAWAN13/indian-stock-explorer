@@ -16,6 +16,7 @@ def test_overview_returns_company_and_listings():
     data = response.json()
 
     assert data["resolution_status"] == "RESOLVED"
+    assert data["listing_status"] == "LISTED"
     assert data["company_name"] == "Tata Motors Limited"
     assert len(data["listings"]) == 2
     assert {
@@ -34,6 +35,7 @@ def test_overview_returns_not_found():
     data = response.json()
 
     assert data["resolution_status"] == "NOT_FOUND"
+    assert data["listing_status"] == "NOT_LISTED"
     assert data["company_name"] is None
     assert data["listings"] == []
 

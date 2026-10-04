@@ -8,6 +8,7 @@ from app.api.schemas import (
 )
 from app.domain.models import ResolutionStatus
 from app.services.company_resolver import CompanyResolver
+from app.services.listing_verifier import verify_listing
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -45,11 +46,11 @@ def get_company_overview(
     resolver: CompanyResolver = Depends(get_company_resolver),
 ) -> CompanyOverviewResponse:
     result = resolver.resolve(q)
+    listing_status = verify_listing(result)
 
     company_name = None
 
     if result.status == ResolutionStatus.RESOLVED and result.matches:
-        # Prefer the most descriptive exchange-provided name.
         company_name = max(
             result.matches,
             key=lambda security: len(security.company_name),
@@ -58,6 +59,7 @@ def get_company_overview(
     return CompanyOverviewResponse(
         query=result.query,
         resolution_status=result.status,
+        listing_status=listing_status,
         company_name=company_name,
         listings=[
             to_security_response(security)
