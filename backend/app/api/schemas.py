@@ -1,7 +1,10 @@
-from pydantic import BaseModel
-from app.domain.models import ListingStatus, ResolutionStatus
 from datetime import datetime
 from decimal import Decimal
+
+from pydantic import BaseModel
+
+from app.domain.models import ListingStatus, ResolutionStatus
+
 
 class SecurityResponse(BaseModel):
     company_name: str
@@ -24,6 +27,7 @@ class CompanyOverviewResponse(BaseModel):
     company_name: str | None = None
     listings: list[SecurityResponse]
 
+
 class MarketQuoteResponse(BaseModel):
     symbol: str
     exchange: str
@@ -34,3 +38,16 @@ class MarketQuoteResponse(BaseModel):
     currency: str
     timestamp: datetime
     source: str
+
+
+class CompanyResearchListingResponse(BaseModel):
+    listing: SecurityResponse
+    quote: MarketQuoteResponse | None = None
+
+
+class CompanyResearchResponse(BaseModel):
+    query: str
+    resolution_status: ResolutionStatus
+    listing_status: ListingStatus
+    company_name: str | None = None
+    listings: list[CompanyResearchListingResponse]
