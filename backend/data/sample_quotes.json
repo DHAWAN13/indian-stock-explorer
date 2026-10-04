@@ -1,0 +1,21 @@
+
+[
+  {
+    "symbol": "TMPV",
+    "exchange": "NSE",
+    "price": "750.00",
+    "previous_close": "740.00",
+    "currency": "INR",
+    "timestamp": "2026-10-04T15:30:00+05:30",
+    "source": "sample"
+  },
+  {
+    "symbol": "TMPV",
+    "exchange": "BSE",
+    "price": "751.00",
+    "previous_close": "742.00",
+    "currency": "INR",
+    "timestamp": "2026-10-04T15:30:00+05:30",
+    "source": "sample"
+  }
+]
