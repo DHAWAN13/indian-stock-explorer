@@ -81,3 +81,14 @@ def test_invalid_exchange_is_rejected():
 
     with pytest.raises(MarketDataProviderError):
         provider.get_quote("TMPV", "NYSE")
+
+
+def test_single_daily_observation_returns_none():
+    ticker = Mock()
+    ticker.history.return_value = make_history().iloc[:1]
+
+    provider = YahooFinanceProvider(
+        ticker_factory=Mock(return_value=ticker)
+    )
+
+    assert provider.get_quote("TMPV", "NSE") is None
