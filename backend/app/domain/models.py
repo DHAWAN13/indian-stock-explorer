@@ -22,3 +22,8 @@ class ResolutionResult:
     query: str
     status: ResolutionStatus
     matches: list[Security]
+
+class ListingStatus(str, Enum):
+    LISTED = "LISTED"
+    NOT_LISTED = "NOT_LISTED"
+    UNVERIFIED = "UNVERIFIED"
