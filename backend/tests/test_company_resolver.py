@@ -40,3 +40,26 @@ def test_returns_not_found():
     result = resolver.resolve("Unknown Company")
 
     assert result.status == ResolutionStatus.NOT_FOUND
+
+
+def test_ambiguous_company_name():
+    securities = [
+        Security(
+            company_name="TATA MOTORS LIMITED",
+            symbol="TMCV",
+            exchange="NSE",
+            isin="INE1TAE01010",
+        ),
+        Security(
+            company_name="TATA MOTORS PASS VEH LTD",
+            symbol="TMPV",
+            exchange="NSE",
+            isin="INE155A01022",
+        ),
+    ]
+
+    resolver = CompanyResolver(securities)
+    result = resolver.resolve("Tata Motors")
+
+    assert result.status == ResolutionStatus.AMBIGUOUS
+    assert {security.symbol for security in result.matches} == {"TMCV", "TMPV"}

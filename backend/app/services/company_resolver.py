@@ -31,14 +31,22 @@ class CompanyResolver:
                 matches=[],
             )
 
-        direct_matches = [
+        # Exact ticker match takes priority.
+        symbol_matches = [
             security
             for security in self.securities
-            if normalized in {
-                self._normalize(security.company_name),
-                self._normalize(security.symbol),
-            }
+            if self._normalize(security.symbol) == normalized
         ]
+
+        if symbol_matches:
+            direct_matches = symbol_matches
+        else:
+            # Allow partial company-name searches.
+            direct_matches = [
+                security
+                for security in self.securities
+                if normalized in self._normalize(security.company_name)
+            ]
 
         if not direct_matches:
             return ResolutionResult(
@@ -56,11 +64,15 @@ class CompanyResolver:
 
         matches = list(direct_matches)
 
-        if matched_isins:
-            for security in self.securities:
-                if security.isin in matched_isins and security not in matches:
-                    matches.append(security)
+        for security in self.securities:
+            if (
+                security.isin
+                and security.isin in matched_isins
+                and security not in matches
+            ):
+                matches.append(security)
 
+        # Multiple ISINs mean the query may refer to different companies.
         status = (
             ResolutionStatus.RESOLVED
             if self._is_single_company(matches)
@@ -85,6 +97,5 @@ class CompanyResolver:
     @staticmethod
     def _normalize(value: str) -> str:
         value = value.strip().lower()
-        value = re.sub(r"\b(limited|ltd)\b", "", value)
         value = re.sub(r"[^a-z0-9]+", " ", value)
         return " ".join(value.split())
