@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from app.domain.models import ResolutionStatus
+from app.domain.models import ListingStatus, ResolutionStatus
 
 
 class SecurityResponse(BaseModel):
@@ -20,5 +20,6 @@ class CompanySearchResponse(BaseModel):
 class CompanyOverviewResponse(BaseModel):
     query: str
     resolution_status: ResolutionStatus
+    listing_status: ListingStatus
     company_name: str | None = None
     listings: list[SecurityResponse]
