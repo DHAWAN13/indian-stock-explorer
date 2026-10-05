@@ -265,6 +265,10 @@ function HistoricalPriceChart({
       ? ((lastPoint.value - firstPoint.value) / firstPoint.value) * 100
       : null
 
+  const chartIsUp = rangeChange == null || rangeChange >= 0
+  const chartColor = chartIsUp ? '#22c55e' : '#ef4444'
+  const chartFillId = chartIsUp ? 'history-fill-green' : 'history-fill-red'
+
   function selectNearestPoint(event) {
     if (!points.length) return
 
@@ -369,9 +373,15 @@ function HistoricalPriceChart({
               onPointerLeave={() => setHoveredIndex(null)}
             >
               <defs>
-                <linearGradient id="history-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#28c58a" stopOpacity="0.23" />
-                  <stop offset="100%" stopColor="#28c58a" stopOpacity="0.01" />
+                <linearGradient
+                  id={chartFillId}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="0%" stopColor={chartColor} stopOpacity="0.23" />
+                  <stop offset="100%" stopColor={chartColor} stopOpacity="0.01" />
                 </linearGradient>
               </defs>
 
@@ -395,12 +405,12 @@ function HistoricalPriceChart({
                 </g>
               ))}
 
-              <path d={areaPath} fill="url(#history-fill)" />
+              <path d={areaPath} fill={`url(#${chartFillId})`} />
 
               <path
                 d={linePath}
                 fill="none"
-                stroke="#28c58a"
+                stroke={chartColor}
                 strokeWidth="2.3"
                 strokeLinejoin="round"
                 strokeLinecap="round"
@@ -420,7 +430,7 @@ function HistoricalPriceChart({
                     cx={activePoint.x}
                     cy={activePoint.y}
                     r="5"
-                    fill="#28c58a"
+                    fill={chartColor}
                     stroke="#0e151b"
                     strokeWidth="2"
                     vectorEffect="non-scaling-stroke"
@@ -777,7 +787,7 @@ function App() {
         </header>
 
         <main className="dashboard">
-          <section className="page-heading">
+          <section className={`page-heading ${searchedQuery ? 'has-results' : ''}`}>
             <div>
               <div className="eyebrow">PUBLIC MARKETS / INDIA</div>
               <h1>
@@ -838,7 +848,7 @@ function App() {
                 <div>
                   <div className="eyebrow">IDENTITY RESOLUTION</div>
                   <h2>Select the intended company</h2>
-                  <p>More than one company matches ”œ{searchedQuery}”.</p>
+                  <p>More than one company matches &quot;{searchedQuery}&quot;.</p>
                 </div>
                 <StateBadge value="AMBIGUOUS" />
               </div>
@@ -870,7 +880,7 @@ function App() {
               <StateBadge value={overview?.listing_status || 'UNVERIFIED'} />
               <h2>No matching listed company found</h2>
               <p>
-                The configured listing data couldn&apos;t resolve ”œ{searchedQuery}”.
+                The configured listing data couldn&apos;t resolve &quot;{searchedQuery}&quot;.
                 This does not independently prove that a company is unlisted.
               </p>
             </section>
@@ -888,7 +898,7 @@ function App() {
                     <div className="eyebrow">RESEARCH OVERVIEW</div>
                     <h2>{companyName}</h2>
                     <p className="result-query">
-                      Resolved from ”œ{searchedQuery}”
+                      Resolved from &quot;{searchedQuery}&quot;
                     </p>
                   </div>
                   <StateBadge value={overview.listing_status} />
