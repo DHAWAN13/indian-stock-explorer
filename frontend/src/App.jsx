@@ -72,6 +72,18 @@ function dateLabel(value) {
   })
 }
 
+function dateOnlyLabel(value) {
+  if (!value) return 'Date unavailable'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Date unavailable'
+
+  return date.toLocaleDateString('en-IN', {
+    dateStyle: 'medium',
+    timeZone: 'Asia/Kolkata',
+  })
+}
+
 function chartTimeLabel(value, range) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
@@ -166,8 +178,8 @@ function QuoteCard({ listing, quote }) {
           </div>
 
           <div className="data-row">
-            <span>Quote time</span>
-            <strong>{dateLabel(quote.as_of || quote.timestamp)}</strong>
+            <span>Session date</span>
+            <strong>{dateOnlyLabel(quote.as_of || quote.timestamp)}</strong>
           </div>
 
           <div className="quote-source">
@@ -1086,9 +1098,9 @@ function App() {
               </div>
               {primaryQuote && (
                 <div className="rail-data-time">
-                  <span>Last quote timestamp</span>
+                  <span>Last quote session date</span>
                   <strong>
-                    {dateLabel(primaryQuote.as_of || primaryQuote.timestamp)}
+                    {dateOnlyLabel(primaryQuote.as_of || primaryQuote.timestamp)}
                   </strong>
                 </div>
               )}
