@@ -1,0 +1,50 @@
+
+name: Refresh NSE and BSE security masters
+
+on:
+  schedule:
+    # 10:15 PM IST, Monday to Friday
+    - cron: "45 16 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-exchange-security-masters
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download and validate NSE/BSE masters
+        run: python backend/scripts/refresh_exchange_data.py
+
+      - name: Commit changed security masters
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -f data/exchange
+
+          if git diff --cached --quiet; then
+            echo "No security-master changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore(data): refresh NSE and BSE security masters"
+          git push origin main
