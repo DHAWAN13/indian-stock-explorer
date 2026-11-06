@@ -1,16 +1,16 @@
 {
   "BSE": {
-    "date": "2026-11-05",
-    "eligible_equity_records": 5590,
-    "file": "BSE_EQ_SCRIP_05112026.csv",
-    "source_archive_member": "SCRIP/BSE_EQ_SCRIP_05112026.csv",
+    "date": "2026-11-06",
+    "eligible_equity_records": 5600,
+    "file": "BSE_EQ_SCRIP_06112026.csv",
+    "source_archive_member": "SCRIP/BSE_EQ_SCRIP_06112026.csv",
     "source_url": "https://www.bseindia.com/downloads/Help/file/scrip.zip"
   },
   "NSE": {
-    "date": "2026-11-05",
+    "date": "2026-11-06",
     "eligible_equity_records": 4053,
-    "file": "NSE_CM_security_05112026.csv.gz",
-    "source_url": "https://nsearchives.nseindia.com/content/cm/NSE_CM_security_05112026.csv.gz"
+    "file": "NSE_CM_security_06112026.csv.gz",
+    "source_url": "https://nsearchives.nseindia.com/content/cm/NSE_CM_security_06112026.csv.gz"
   },
   "schema_version": 1
 }
